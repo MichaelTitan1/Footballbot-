@@ -1,76 +1,80 @@
+# Use an official Python runtime as a parent image
+FROM python:3.8-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Make port 8000 available to the world outside this container
+EXPOSE 8000
+
+# Run bot.py when the container launches
+CMD ["python", "bot.py"]
+python-telegram-bot==20.1
+requests==2.28.2
+pandas==1.5.3
+apscheduler==3.8.1
+import os
 import requests
-import telegram
+import pandas as pd
+from apscheduler.schedulers.background import BackgroundScheduler
+from telegram import Bot
+from telegram.ext import Updater, CommandHandler, CallbackContext
 from datetime import datetime
-import time
 
-# Your API keys (SportsMonk and others)
-api_keys = [
-    "10K1q8aHCHcC2zJn4SIoAPmF0L6GePM2o7bQnaRF25ftQTUAdG11BYiZTUUj",  # Example API key 1
-    "ddac830e88b36908d910d3a6243febe0",  # Example API key 2
-    "9446479bb0f51557d3e219ad87d0823c",  # Example API key 3
-    "0d3fbebb6a0f480d882b6cbe6c94935b",  # Example API key 4
-]
+# API keys (with the ones you provided)
+SPORTS_API_KEY_1 = 'ddac830e88b36908d910d3a6243febe0'
+SPORTS_API_KEY_2 = '9446479bb0f51557d3e219ad87d0823c0d3fbeb'
+SPORTS_API_KEY_3 = '0d3fbebb6a0f480d882b6cbe6c94935b'
+SPORTS_API_KEY_4 = 'SqhwD69YrioLN33CoBd10jQiXA44FFYdpfeKd0SKbRpq18uFPf8G0ZBAdN24'
+TELEGRAM_API_TOKEN = '6073976909:AAHjxWe1Yp3T60w4FEUw0qMb4rqJvPztqM4'
 
-# Telegram bot token
-TELEGRAM_TOKEN = "7468130122:AAGemkwMbVxUYGufj8ILwtfNzs3oed41Gx0"  # Your actual bot token
-bot = telegram.Bot(token=TELEGRAM_TOKEN)
+# Telegram bot setup
+bot = Bot(token=TELEGRAM_API_TOKEN)
 
-# Replace with your chat ID or group ID
-chat_id = "@YOUR_GROUP_OR_CHANNEL_NAME"  # Replace with your actual Telegram chat ID or group ID
+# The bot will send messages to your Telegram chat or group after receiving the '/start' command
+def start(update, context):
+    update.message.reply_text("Hello! I am your sports betting bot. Type /get_bets to get today's best bets.")
 
+# Fetch the sports betting data from the Sports API
 def fetch_bets():
-    # Function to fetch the bets from the API
-    for api_key in api_keys:
-        url = f"https://api.sportsmonk.com/v1/odds"  # Adjust the API endpoint for fetching odds or bets
-        response = requests.get(url, headers={"Authorization": f"Bearer {api_key}"})
-        
-        if response.status_code == 200:
-            return response.json()  # Return the bet data if successful
-        else:
-            print(f"Error fetching data from API. Status code: {response.status_code}")
-            continue
-    return None
+    url = f"https://api.sportsmonk.com/v1/bets?api_key={SPORTS_API_KEY_1}"
+    response = requests.get(url)
+    return response.json()
 
-def fetch_live_score(match_name):
-    # Function to fetch live scores
-    for api_key in api_keys:
-        url = f"https://api.sportsmonk.com/v1/matches?name={match_name}"  # Adjust this for the live score API
-        response = requests.get(url, headers={"Authorization": f"Bearer {api_key}"})
-        
-        if response.status_code == 200:
-            return response.json()  # Return the match score if successful
-        else:
-            print(f"Error fetching score. Status code: {response.status_code}")
-            continue
-    return "No score found for this match."
+# Format and send betting predictions to the Telegram chat
+def send_bets(update, context):
+    bets = fetch_bets()
+    if bets:
+        message = "Today's Best Bets:\n\n"
+        for bet in bets:
+            message += f"{bet['match']}: {bet['prediction']} - {bet['odds']}\n"
+        update.message.reply_text(message)
+    else:
+        update.message.reply_text("Sorry, no bets found for today.")
 
-def send_message(message):
-    # Function to send messages to the Telegram bot
-    bot.send_message(chat_id=chat_id, text=message)
+# Schedule a daily job to fetch and send bets automatically at 6:00 AM (Nigeria time)
+def schedule_daily_bets():
+    scheduler = BackgroundScheduler(timezone="Africa/Lagos")
+    scheduler.add_job(send_bets, 'interval', hours=24, start_date=datetime(2025, 4, 3, 6, 0, 0))
+    scheduler.start()
 
-def main():
-    # Main function that runs the bot continuously
-    while True:
-        user_input = input("Enter your request (type 'exit' to quit): ")
+# Create an updater and dispatcher for handling Telegram commands
+updater = Updater(TELEGRAM_API_TOKEN, use_context=True)
+dp = updater.dispatcher
 
-        if user_input.lower() == "exit":
-            break
-        
-        if "check result" in user_input.lower():
-            match_name = user_input.replace("check result", "").strip()
-            score = fetch_live_score(match_name)
-            send_message(f"Score for {match_name}: {score}")
-        
-        else:
-            bets = fetch_bets()
-            if bets:
-                # Format the bet message as needed
-                formatted_bets = "\n".join([f"{bet['match']} - {bet['odds']}" for bet in bets['data']])
-                send_message(f"Today's bets: \n{formatted_bets}")
-            else:
-                send_message("No bets available at the moment.")
-        
-        time.sleep(10)  # Sleep for 10 seconds to avoid API rate limits
+# Add command handlers for the bot
+dp.add_handler(CommandHandler('start', start))
+dp.add_handler(CommandHandler('get_bets', send_bets))
 
-if __name__ == "__main__":
-    main()
+# Start the scheduler for automatic bet sending
+schedule_daily_bets()
+
+# Start the bot
+updater.start_polling()
+updater.idle()
