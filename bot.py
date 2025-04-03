@@ -1,9 +1,7 @@
-# bot.py
 import os
 import requests
-import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
-from telegram import Bot
+from telegram import Bot, Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from datetime import datetime
 
@@ -18,17 +16,22 @@ TELEGRAM_API_TOKEN = '6073976909:AAHjxWe1Yp3T60w4FEUw0qMb4rqJvPztqM4'
 bot = Bot(token=TELEGRAM_API_TOKEN)
 
 # The bot will send messages to your Telegram chat or group after receiving the '/start' command
-def start(update, context):
+def start(update: Update, context: CallbackContext):
     update.message.reply_text("Hello! I am your sports betting bot. Type /get_bets to get today's best bets.")
 
 # Fetch the sports betting data from the Sports API
 def fetch_bets():
-    url = f"https://api.sportsmonk.com/v1/bets?api_key={SPORTS_API_KEY_1}"
-    response = requests.get(url)
-    return response.json()
+    try:
+        url = f"https://api.sportsmonk.com/v1/bets?api_key={SPORTS_API_KEY_1}"
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure we get a valid response
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data: {e}")
+        return None
 
 # Format and send betting predictions to the Telegram chat
-def send_bets(update, context):
+def send_bets(update: Update, context: CallbackContext):
     bets = fetch_bets()
     if bets:
         message = "Today's Best Bets:\n\n"
